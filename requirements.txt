@@ -1,10 +1,12 @@
 
 streamlit==1.36.0
-pandas==2.2.2
 beautifulsoup4==4.12.3
 requests==2.32.3
-python-docx==1.1.2
 pyyaml==6.0.1
+
+# The following dependencies were removed to improve build compatibility:
+#  - pandas: not needed; replaced by Python's built-in csv module.
+#  - python-docx: not used; the risk dictionary is loaded from CSV.
 
 # Note: rapidfuzz was previously used for fuzzy matching. To avoid native
 # compilation issues on certain platforms (e.g. Python 3.13), the app now uses

@@ -1,6 +1,6 @@
 
 import streamlit as st
-import pandas as pd
+import csv
 import requests, re, json, os, time, math
 from urllib.parse import urlparse, urljoin, parse_qs
 from bs4 import BeautifulSoup
@@ -54,10 +54,28 @@ st.set_page_config(page_title="Insurance Risk Analyzer", page_icon="🛡️", la
 # Load risk dictionary
 @st.cache_data
 def load_risk_dict():
-    df = pd.read_csv("risk_dictionary.csv")
-    df["occupation_norm"] = df["occupation"].str.strip().str.lower()
-    mapping = dict(zip(df["occupation_norm"], df["rating"]))
-    return df, mapping
+    """
+    Load the risk dictionary from a CSV file without requiring pandas. This reads
+    each row into a dict and builds a mapping of normalized occupation names to ratings.
+    Returns a tuple (rows, mapping). If the file is missing or empty, returns empty values.
+    """
+    rows = []
+    mapping = {}
+    try:
+        with open("risk_dictionary.csv", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Normalize occupation name
+                occ = (row.get("occupation") or "").strip().lower()
+                rating = row.get("rating")
+                # Preserve the row for potential future use
+                rows.append(row)
+                if occ:
+                    # Ratings are stored as strings; preserve as-is for now
+                    mapping[occ] = rating
+    except Exception:
+        pass
+    return rows, mapping
 
 # Load synonyms and sector keywords
 @st.cache_data
@@ -321,8 +339,15 @@ if run and url:
             "Reasoning/Notes": res["notes"],
             "Evidence": " | ".join(res["evidence"]),
         }
-        df = pd.DataFrame([export])
-        st.download_button("Download CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="assessment.csv", mime="text/csv")
+        # Build CSV data manually to avoid the pandas dependency. We create a CSV
+        # string with a header row and a single data row using the built-in csv module.
+        import io
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=list(export.keys()))
+        writer.writeheader()
+        writer.writerow(export)
+        csv_data = output.getvalue()
+        st.download_button("Download CSV", data=csv_data.encode("utf-8"), file_name="assessment.csv", mime="text/csv")
 
         # Shareable link
         base = os.getenv("PUBLIC_BASE_URL", "")  # if deployed, set this; otherwise fallback to query param link

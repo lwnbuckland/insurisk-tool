@@ -27,7 +27,6 @@ from socketserver import ThreadingMixIn
 
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 # Removed dependency on rapidfuzz to avoid binary compilation issues on some platforms.
 # We'll implement a simple fuzzy matching helper using difflib instead of
 # relying on rapidfuzz. See functions `_simple_partial_ratio` and `_extract_one` below.
@@ -76,12 +75,30 @@ def _extract_one(query: str, choices: list[str]):
 # Data loading
 # -----------------------------------------------------------------------------
 def load_risk_dict(csv_path: str):
-    """Load the risk dictionary from a CSV into a DataFrame and mapping."""
-    df = pd.read_csv(csv_path)
-    # Normalize occupation names for lookup
-    df["occupation_norm"] = df["occupation"].astype(str).str.strip().str.lower()
-    mapping = dict(zip(df["occupation_norm"], df["rating"].astype(int)))
-    return df, mapping
+    """Load the risk dictionary from a CSV file without relying on pandas.
+
+    Parses the CSV into a list of dictionaries and builds a mapping from
+    normalized occupation names (lowercase) to integer ratings. If parsing fails,
+    returns empty structures. Ratings that cannot be converted to integers are
+    ignored.
+    """
+    rows: list[dict] = []
+    mapping: dict[str, int] = {}
+    try:
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+                occ = (row.get("occupation") or "").strip().lower()
+                rating = row.get("rating")
+                if occ and rating:
+                    try:
+                        mapping[occ] = int(rating)
+                    except ValueError:
+                        continue
+    except Exception:
+        pass
+    return rows, mapping
 
 
 def parse_synonyms(yaml_path: str):
