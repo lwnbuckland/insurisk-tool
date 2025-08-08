@@ -52,7 +52,6 @@ def _extract_one(query: str, choices: list[str]):
 st.set_page_config(page_title="Insurance Risk Analyzer", page_icon="🛡️", layout="wide")
 
 # Load risk dictionary
-@st.cache_data
 def load_risk_dict():
     """
     Load the risk dictionary from a CSV file without requiring pandas. This reads
@@ -78,7 +77,6 @@ def load_risk_dict():
     return rows, mapping
 
 # Load synonyms and sector keywords
-@st.cache_data
 def load_aux():
     import yaml
     with open("synonyms.yaml", "r", encoding="utf-8") as f:
