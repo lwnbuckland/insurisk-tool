@@ -144,10 +144,14 @@ def load_sector_keywords(json_path: str):
 
 def tier_for(score: int):
     """Return tier label and colour given a numeric score."""
+    # Updated tiers reflecting insurer appetite:
+    # 1–3: low risk/in appetite
+    # 4–8: medium risk/needs review
+    # 9: very high risk/potentially placeable
+    # 10: out of appetite/decline
     tiers = [
         (1, 3, "Low / In appetite", "green"),
-        (4, 6, "Medium / Needs review", "orange"),
-        (7, 8, "High / Hard to place", "red"),
+        (4, 8, "Medium / Needs review", "orange"),
         (9, 9, "Very High / Potentially placeable", "red"),
         (10, 10, "Out of appetite / Decline", "black"),
     ]
@@ -389,7 +393,9 @@ def analyze_url(url: str, mapping: dict, synonyms: dict, sector_kws: dict):
                 name_guess = m.group(1).strip()
             notes = (
                 "No qualifying occupations detected; assigned risk score based on the "
-                f"business sector '{sector}' using fallback mapping."
+                f"business sector '{sector}' using fallback mapping. "
+                "The rating scale is 1–3 = Low/In appetite, 4–8 = Medium/Needs review, "
+                "9 = Very High/Potentially placeable, and 10 = Out of appetite/Decline."
             )
             return {
                 "url": url,
@@ -412,7 +418,8 @@ def analyze_url(url: str, mapping: dict, synonyms: dict, sector_kws: dict):
     for k, v in found.items():
         if k == core_key:
             continue
-        if int(v["rating"]) >= 7:
+        # Treat only ratings ≥9 as high‑risk flags under the revised scale.
+        if int(v["rating"]) >= 9:
             flags.append({"occupation": k, "rating": int(v["rating"])})
     # Evidence snippets
     evidence = evidence_snippets(all_text, core_key, 3)
@@ -425,8 +432,9 @@ def analyze_url(url: str, mapping: dict, synonyms: dict, sector_kws: dict):
     notes = (
         f"Core activity selected by prominence weighting and on-site phrasing. "
         f"Matched '{core_key}' via {core.get('source')} with rating {score} from Document10. "
-        "9 = 'Very High / Potentially placeable' is treated as such; no averaging applied. "
-        + ("Additional high-risk flags present." if flags else "No additional high-risk flags detected.")
+        "The rating scale is 1–3 = Low/In appetite, 4–8 = Medium/Needs review, "
+        "9 = Very High/Potentially placeable, and 10 = Out of appetite/Decline. "
+        + ("Additional very high-risk flags present." if flags else "No additional very high-risk flags detected.")
     )
     return {
         "url": url,

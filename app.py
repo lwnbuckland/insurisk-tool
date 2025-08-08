@@ -91,12 +91,15 @@ DICT_DF, DICT_MAP = load_risk_dict()
 SYNONYMS, SECTOR_KW = load_aux()
 CANONICALS = set(DICT_MAP.keys())
 
+# Tier definitions reflect the insurer's appetite for risk. Scores 1–3 are low
+# risk and within appetite. Scores 4–8 warrant a closer look but are often
+# acceptable with caution. A score of 9 is very high risk but might still be
+# placeable, whereas 10 indicates the business is out of appetite altogether.
 TIERS = [
-    (1,3,"Low / In appetite","green"),
-    (4,6,"Medium / Needs review","orange"),
-    (7,8,"High / Hard to place","red"),
-    (9,9,"Very High / Potentially placeable","red"),
-    (10,10,"Out of appetite / Decline","black"),
+    (1, 3, "Low / In appetite", "green"),
+    (4, 8, "Medium / Needs review", "orange"),
+    (9, 9, "Very High / Potentially placeable", "red"),
+    (10, 10, "Out of appetite / Decline", "black"),
 ]
 
 def tier_for(score:int):
@@ -297,8 +300,12 @@ def analyze(url):
             m = re.search(r"([A-Z][A-Za-z0-9&' ]{2,60})(?:\s[-|•|–])", collected_texts[0])
             if m:
                 name_guess = m.group(1).strip()
-            notes = ("No qualifying occupations detected; assigned risk score based on the "
-                     f"business sector '{sector}' using fallback mapping.")
+            notes = (
+                "No qualifying occupations detected; assigned risk score based on the "
+                f"business sector '{sector}' using fallback mapping. "
+                "The rating scale is 1–3 = Low/In appetite, 4–8 = Medium/Needs review, "
+                "9 = Very High/Potentially placeable, and 10 = Out of appetite/Decline."
+            )
             return {
                 "url": url,
                 "business_name": name_guess,
@@ -317,12 +324,13 @@ def analyze(url):
     score = int(core["rating"])
     tier_label, tier_color = tier_for(score)
 
-    # Additional flags: other items with rating >=7
+    # Additional flags: other items with very high ratings (≥9)
     flags = []
     for k, v in found.items():
         if k == core_key:
             continue
-        if int(v["rating"]) >= 7:
+        # Only treat ratings of 9 or above as high-risk flags under the revised scale.
+        if int(v["rating"]) >= 9:
             flags.append({"occupation": k, "rating": int(v["rating"])})
     # Evidence
     ev = evidence_snippets(all_text, core_key, 3)
@@ -334,7 +342,13 @@ def analyze(url):
         name_guess = m.group(1).strip()
 
     # Notes
-    notes = f"Core activity selected by prominence weighting and on-site phrasing. Matched '{core_key}' via {core.get('source')} with rating {score} from Document10. 9 = 'Very High / Potentially placeable' is treated as such; no averaging applied. {('Additional high-risk flags present.' if flags else 'No additional high-risk flags detected.')}"
+    notes = (
+        f"Core activity selected by prominence weighting and on-site phrasing. "
+        f"Matched '{core_key}' via {core.get('source')} with rating {score} from Document10. "
+        "The rating scale is 1–3 = Low/In appetite, 4–8 = Medium/Needs review, "
+        "9 = Very High/Potentially placeable, and 10 = Out of appetite/Decline. "
+        + ("Additional very high-risk flags present." if flags else "No additional very high-risk flags detected.")
+    )
 
     result = {
         "url": url,
@@ -388,13 +402,12 @@ if run and url:
                     # Display the raw numeric score using the built‑in metric widget
                     st.metric(label="Risk Score (1–10)", value=score_display)
                     # Highlight the tier using Streamlit status messages.
-                    # High scores (≥7) are considered high risk and are shown as an error message.
-                    if score_display >= 7:
+                    # Scores ≥9 are considered very high or out-of-appetite and are shown as an error.
+                    # Scores 4–8 warrant caution and are shown as a warning, while 1–3 are within appetite.
+                    if score_display >= 9:
                         st.error(f"{tier_lbl} (score {score_display}/10)")
-                    # Medium scores (4–6) warrant caution and are shown as a warning.
                     elif score_display >= 4:
                         st.warning(f"{tier_lbl} (score {score_display}/10)")
-                    # Low scores (1–3) are within appetite and shown as a success message.
                     else:
                         st.success(f"{tier_lbl} (score {score_display}/10)")
                 else:
@@ -413,7 +426,9 @@ if run and url:
             occ = res['core']['occupation']
             rating = res['core']['rating']
             # Highlight the core occupation based on its risk rating.
-            if rating >= 7:
+            # Colour-code the core occupation rating according to the revised scale:
+            # 9–10: very high/out of appetite → error; 4–8: medium → warning; 1–3: low → success
+            if rating >= 9:
                 st.error(f"{occ} — rating {rating}")
             elif rating >= 4:
                 st.warning(f"{occ} — rating {rating}")
@@ -422,8 +437,8 @@ if run and url:
         else:
             st.write("No qualifying occupations detected")
         if res["flags"]:
-            st.markdown("**Additional High-Risk Flags (≥7, advisory only)**")
-            # Display each flagged occupation as an error to emphasize its high risk.
+            st.markdown("**Additional High‑Risk Flags (≥9, advisory only)**")
+            # Display each flagged occupation as an error to emphasise its very high risk.
             for f in res["flags"]:
                 st.error(f"{f['occupation']} — {f['rating']}")
         st.markdown("**Reasoning/Notes**")
