@@ -309,9 +309,20 @@ if run and url:
             st.write(res["url"])
         with col2:
             if res["score"] is not None:
+                # Determine tier label and color for the risk score
                 tier_lbl, color = tier_for(res["score"])
+                # Display the raw numeric score using the built‑in metric widget
                 st.metric(label="Risk Score (1–10)", value=res["score"])
-                st.markdown(f"**Tier:** {tier_lbl}")
+                # Highlight the tier using Streamlit status messages.
+                # High scores (≥7) are considered high risk and are shown as an error message.
+                if res["score"] >= 7:
+                    st.error(f"{tier_lbl} (score {res['score']}/10)")
+                # Medium scores (4–6) warrant caution and are shown as a warning.
+                elif res["score"] >= 4:
+                    st.warning(f"{tier_lbl} (score {res['score']}/10)")
+                # Low scores (1–3) are within appetite and shown as a success message.
+                else:
+                    st.success(f"{tier_lbl} (score {res['score']}/10)")
         st.divider()
         st.markdown("**Business Sector (chosen)**")
         st.write(res["sector"])
@@ -321,13 +332,22 @@ if run and url:
         # attempting to index into None would raise a TypeError (as reported). If
         # there is no core occupation, inform the user instead of crashing.
         if res.get("core"):
-            st.write(f"{res['core']['occupation']} — rating {res['core']['rating']}")
+            occ = res['core']['occupation']
+            rating = res['core']['rating']
+            # Highlight the core occupation based on its risk rating.
+            if rating >= 7:
+                st.error(f"{occ} — rating {rating}")
+            elif rating >= 4:
+                st.warning(f"{occ} — rating {rating}")
+            else:
+                st.success(f"{occ} — rating {rating}")
         else:
             st.write("No qualifying occupations detected")
         if res["flags"]:
             st.markdown("**Additional High-Risk Flags (≥7, advisory only)**")
+            # Display each flagged occupation as an error to emphasize its high risk.
             for f in res["flags"]:
-                st.write(f"- {f['occupation']} — {f['rating']}")
+                st.error(f"{f['occupation']} — {f['rating']}")
         st.markdown("**Reasoning/Notes**")
         st.write(res["notes"])
         st.markdown("**Evidence Snippets**")
