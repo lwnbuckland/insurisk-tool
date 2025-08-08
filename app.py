@@ -308,21 +308,37 @@ if run and url:
             st.subheader(res["business_name"] or url)
             st.write(res["url"])
         with col2:
-            if res["score"] is not None:
-                # Determine tier label and color for the risk score
-                tier_lbl, color = tier_for(res["score"])
-                # Display the raw numeric score using the built‑in metric widget
-                st.metric(label="Risk Score (1–10)", value=res["score"])
-                # Highlight the tier using Streamlit status messages.
-                # High scores (≥7) are considered high risk and are shown as an error message.
-                if res["score"] >= 7:
-                    st.error(f"{tier_lbl} (score {res['score']}/10)")
-                # Medium scores (4–6) warrant caution and are shown as a warning.
-                elif res["score"] >= 4:
-                    st.warning(f"{tier_lbl} (score {res['score']}/10)")
-                # Low scores (1–3) are within appetite and shown as a success message.
+                # Even if the core occupation is missing, we still want to display a
+                # risk indicator. If a core score exists, use it. Otherwise, if
+                # there are any high‑risk flags (rating ≥7), use the highest
+                # flagged rating as a proxy for the overall risk. If neither exist,
+                # leave the score as None.
+                score_display = res["score"]
+                if score_display is None and res.get("flags"):
+                    try:
+                        score_display = max(f.get("rating") or 0 for f in res["flags"])
+                    except ValueError:
+                        score_display = None
+
+                if score_display is not None:
+                    # Determine tier label and colour for the risk score
+                    tier_lbl, color = tier_for(score_display)
+                    # Display the raw numeric score using the built‑in metric widget
+                    st.metric(label="Risk Score (1–10)", value=score_display)
+                    # Highlight the tier using Streamlit status messages.
+                    # High scores (≥7) are considered high risk and are shown as an error message.
+                    if score_display >= 7:
+                        st.error(f"{tier_lbl} (score {score_display}/10)")
+                    # Medium scores (4–6) warrant caution and are shown as a warning.
+                    elif score_display >= 4:
+                        st.warning(f"{tier_lbl} (score {score_display}/10)")
+                    # Low scores (1–3) are within appetite and shown as a success message.
+                    else:
+                        st.success(f"{tier_lbl} (score {score_display}/10)")
                 else:
-                    st.success(f"{tier_lbl} (score {res['score']}/10)")
+                    # If we have no risk information at all, display a neutral metric and info
+                    st.metric(label="Risk Score (1–10)", value="N/A")
+                    st.info("No qualifying occupations detected; risk score unavailable")
         st.divider()
         st.markdown("**Business Sector (chosen)**")
         st.write(res["sector"])
