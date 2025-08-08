@@ -316,7 +316,14 @@ if run and url:
         st.markdown("**Business Sector (chosen)**")
         st.write(res["sector"])
         st.markdown("**Detected Occupation/Industry (core)**")
-        st.write(f"{res['core']['occupation']} — rating {res['core']['rating']}")
+        # Only display the core occupation and rating if it exists. When no matching
+        # occupations are found, res["core"] will be None. Without this check,
+        # attempting to index into None would raise a TypeError (as reported). If
+        # there is no core occupation, inform the user instead of crashing.
+        if res.get("core"):
+            st.write(f"{res['core']['occupation']} — rating {res['core']['rating']}")
+        else:
+            st.write("No qualifying occupations detected")
         if res["flags"]:
             st.markdown("**Additional High-Risk Flags (≥7, advisory only)**")
             for f in res["flags"]:
@@ -334,7 +341,8 @@ if run and url:
             "Risk Score": res["score"],
             "Risk Tier": res["tier"],
             "Business Sector": res["sector"],
-            "Detected Occupation/Industry (core)": res["core"]["occupation"],
+            # Safely export the core occupation; if none exists, leave blank.
+            "Detected Occupation/Industry (core)": res["core"]["occupation"] if res.get("core") else "",
             "Additional Flags": "; ".join([f"{f['occupation']}({f['rating']})" for f in res["flags"]]) if res["flags"] else "",
             "Reasoning/Notes": res["notes"],
             "Evidence": " | ".join(res["evidence"]),
