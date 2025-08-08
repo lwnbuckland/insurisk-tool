@@ -2,7 +2,11 @@
 streamlit==1.36.0
 pandas==2.2.2
 beautifulsoup4==4.12.3
-rapidfuzz==3.9.3
 requests==2.32.3
 python-docx==1.1.2
 pyyaml==6.0.1
+
+# Note: rapidfuzz was previously used for fuzzy matching. To avoid native
+# compilation issues on certain platforms (e.g. Python 3.13), the app now uses
+# Python's built-in difflib for simple fuzzy matching, so rapidfuzz is no
+# longer required.

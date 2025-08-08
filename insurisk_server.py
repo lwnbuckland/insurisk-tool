@@ -28,7 +28,48 @@ from socketserver import ThreadingMixIn
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-from rapidfuzz import process, fuzz
+# Removed dependency on rapidfuzz to avoid binary compilation issues on some platforms.
+# We'll implement a simple fuzzy matching helper using difflib instead of
+# relying on rapidfuzz. See functions `_simple_partial_ratio` and `_extract_one` below.
+from difflib import SequenceMatcher
+
+def _simple_partial_ratio(a: str, b: str) -> int:
+    """Compute a rough partial ratio between two strings.
+
+    This mirrors the behaviour of rapidfuzz.fuzz.partial_ratio by sliding the
+    shorter string over the longer one and taking the best match. The return
+    value is an integer between 0 and 100 representing percentage similarity.
+    """
+    a = (a or "").lower()
+    b = (b or "").lower()
+    if not a or not b:
+        return 0
+    # Ensure a is the shorter string
+    if len(a) > len(b):
+        a, b = b, a
+    best = 0.0
+    len_a = len(a)
+    for i in range(len(b) - len_a + 1):
+        part = b[i : i + len_a]
+        ratio = SequenceMatcher(None, part, a).ratio()
+        if ratio > best:
+            best = ratio
+    return int(best * 100)
+
+def _extract_one(query: str, choices: list[str]):
+    """Return the choice with the highest simple partial ratio to the query.
+
+    Returns a tuple (best_match, score). If choices is empty or no match,
+    returns (None, 0).
+    """
+    best_choice = None
+    best_score = 0
+    for choice in choices:
+        score = _simple_partial_ratio(query, choice)
+        if score > best_score:
+            best_choice = choice
+            best_score = score
+    return best_choice, best_score
 
 
 # -----------------------------------------------------------------------------
@@ -193,14 +234,13 @@ def detect_candidates(all_text: str, mapping: dict, synonyms: dict, canonicals: 
             }
     # Fuzzy (guarded): only if high similarity and appears near service phrases
     windows = re.findall(r"(?:our services|we (?:provide|offer)|services include).{0,200}", text_norm)
-    candidates = set()
+    candidates: set[str] = set()
+    # Use custom simple partial ratio instead of rapidfuzz. Only consider a match
+    # if the similarity score is 92% or higher.
     for w in windows:
-        # extractOne may return None if the collection is empty or no match is found
-        result = process.extractOne(w, list(canonicals), scorer=fuzz.partial_ratio)
-        if result:
-            match, score, _ = result
-            if score >= 92 and match:
-                candidates.add(match)
+        best_match, score = _extract_one(w, list(canonicals))
+        if best_match and score >= 92:
+            candidates.add(best_match)
     for c in candidates:
         found[c] = {
             "name": c,

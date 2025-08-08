@@ -4,7 +4,50 @@ import pandas as pd
 import requests, re, json, os, time, math
 from urllib.parse import urlparse, urljoin, parse_qs
 from bs4 import BeautifulSoup
-from rapidfuzz import process, fuzz
+# Removed dependency on rapidfuzz to avoid binary compilation issues on some platforms.
+# Instead of using RapidFuzz for fuzzy matching, we'll implement a simple partial
+# ratio function using Python's built‑in difflib.SequenceMatcher. This avoids the
+# need for native extensions and still provides basic fuzzy matching capability.
+from difflib import SequenceMatcher
+
+def _simple_partial_ratio(a: str, b: str) -> int:
+    """Compute a rough partial ratio between two strings.
+
+    This mirrors the behaviour of rapidfuzz.fuzz.partial_ratio by sliding the
+    shorter string over the longer one and taking the best match. The return
+    value is an integer between 0 and 100 representing percentage similarity.
+    """
+    a = (a or "").lower()
+    b = (b or "").lower()
+    if not a or not b:
+        return 0
+    # Ensure a is the shorter string
+    if len(a) > len(b):
+        a, b = b, a
+    best = 0.0
+    len_a = len(a)
+    for i in range(len(b) - len_a + 1):
+        part = b[i : i + len_a]
+        # Ratio returns float in [0,1]; multiply by 100 for percentage
+        ratio = SequenceMatcher(None, part, a).ratio()
+        if ratio > best:
+            best = ratio
+    return int(best * 100)
+
+def _extract_one(query: str, choices: list[str]):
+    """Return the choice with the highest simple partial ratio to the query.
+
+    Returns a tuple (best_match, score). If choices is empty or no match,
+    returns (None, 0).
+    """
+    best_choice = None
+    best_score = 0
+    for choice in choices:
+        score = _simple_partial_ratio(query, choice)
+        if score > best_score:
+            best_choice = choice
+            best_score = score
+    return best_choice, best_score
 
 st.set_page_config(page_title="Insurance Risk Analyzer", page_icon="🛡️", layout="wide")
 
@@ -109,11 +152,13 @@ def detect_candidates(all_text):
     # Fuzzy (guarded): only if high similarity and appears near "our services"/"we provide"
     # We'll scan common service phrases windows
     windows = re.findall(r"(?:our services|we (?:provide|offer)|services include).{0,200}", text_norm)
-    candidates = set()
+    candidates: set[str] = set()
+    # Use custom simple partial ratio instead of rapidfuzz. Only consider a match
+    # if the similarity score is 92% or higher.
     for w in windows:
-        match, score, _ = process.extractOne(w, list(CANONICALS), scorer=fuzz.partial_ratio)
-        if score >= 92:
-            candidates.add(match)
+        best_match, score = _extract_one(w, list(CANONICALS))
+        if best_match and score >= 92:
+            candidates.add(best_match)
     for c in candidates:
         found[c] = {"name": c, "rating": int(DICT_MAP[c]), "source": "fuzzy-guarded"}
     return found
