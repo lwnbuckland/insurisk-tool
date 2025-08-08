@@ -1,0 +1,193 @@
+{
+  "Construction": [
+    "construction",
+    "contractor",
+    "groundworks",
+    "civils",
+    "refurbishment",
+    "fit out",
+    "developer",
+    "roofing",
+    "scaffolding",
+    "bricklaying",
+    "earthworks",
+    "steel erection",
+    "building"
+  ],
+  "Electrical and electronic equipment": [
+    "electrical",
+    "electrician",
+    "control panels",
+    "electronics",
+    "pcb",
+    "cctv",
+    "alarms",
+    "ev charger"
+  ],
+  "Wholesale": [
+    "merchant",
+    "wholesale",
+    "builders merchant",
+    "distributor",
+    "stockist",
+    "trade counter"
+  ],
+  "Retail": [
+    "shop",
+    "retail",
+    "store",
+    "boutique",
+    "showroom"
+  ],
+  "Manufacturing": [
+    "manufacture",
+    "factory",
+    "producer",
+    "handbuilt",
+    "fabrication",
+    "assembly",
+    "plant"
+  ],
+  "Hospitality": [
+    "pub",
+    "bar",
+    "restaurant",
+    "hotel",
+    "cafe"
+  ],
+  "Leisure and recreation": [
+    "leisure",
+    "gym",
+    "sports"
+  ],
+  "Farming": [
+    "farm",
+    "farmer",
+    "livery",
+    "stud",
+    "agricultural"
+  ],
+  "Professional services": [
+    "architect",
+    "accountant",
+    "solicitor",
+    "consultant",
+    "agency"
+  ],
+  "Distribution": [
+    "logistics",
+    "haulage",
+    "delivery",
+    "transport"
+  ],
+  "Waste and sewage services": [
+    "waste",
+    "sewage",
+    "refuse",
+    "recycling"
+  ],
+  "Public authorities and defense": [
+    "defence",
+    "defense",
+    "military",
+    "council",
+    "authority"
+  ],
+  "Utilities \u2013 energy, water, and telecoms": [
+    "utilities",
+    "energy",
+    "water",
+    "telecoms"
+  ],
+  "Metalworking, engineering, and machinery": [
+    "fabrication",
+    "machining",
+    "welding",
+    "engineering workshop"
+  ],
+  "Motor trade": [
+    "garage",
+    "vehicle repair",
+    "bodyshop",
+    "dealership"
+  ],
+  "Woodworking": [
+    "joinery",
+    "timber",
+    "carpentry"
+  ],
+  "Food and drink": [
+    "brewery",
+    "butcher",
+    "bakery",
+    "cafe",
+    "restaurant"
+  ],
+  "Services": [
+    "services",
+    "service company"
+  ],
+  "Railways, roads, waterways, marine, and aviation services": [
+    "rail",
+    "aviation",
+    "marine",
+    "highways",
+    "roads",
+    "airport",
+    "harbour",
+    "harbor"
+  ],
+  "Printing and paper": [
+    "printer",
+    "print",
+    "paper"
+  ],
+  "Chemicals, oils, and gas": [
+    "chemical",
+    "oil",
+    "solvent",
+    "adhesive"
+  ],
+  "Mining and quarrying": [
+    "mine",
+    "quarry",
+    "extraction"
+  ],
+  "Plastics and rubber": [
+    "plastic",
+    "rubber",
+    "polymer"
+  ],
+  "Ceramics and glass": [
+    "glass",
+    "ceramic"
+  ],
+  "Clothing, footwear, textiles, and soft furnishings": [
+    "textile",
+    "clothing",
+    "garment",
+    "soft furnishings"
+  ],
+  "Education": [
+    "school",
+    "college",
+    "university",
+    "training"
+  ],
+  "Health, hospitals, and care": [
+    "clinic",
+    "dentist",
+    "hospital",
+    "care home"
+  ],
+  "Property owners": [
+    "landlord",
+    "property portfolio",
+    "estate"
+  ],
+  "Estates": [
+    "estate",
+    "land management"
+  ],
+  "Consumer and business services": []
+}

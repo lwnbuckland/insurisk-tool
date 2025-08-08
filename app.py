@@ -1,0 +1,294 @@
+
+import streamlit as st
+import pandas as pd
+import requests, re, json, os, time, math
+from urllib.parse import urlparse, urljoin, parse_qs
+from bs4 import BeautifulSoup
+from rapidfuzz import process, fuzz
+
+st.set_page_config(page_title="Insurance Risk Analyzer", page_icon="🛡️", layout="wide")
+
+# Load risk dictionary
+@st.cache_data
+def load_risk_dict():
+    df = pd.read_csv("risk_dictionary.csv")
+    df["occupation_norm"] = df["occupation"].str.strip().str.lower()
+    mapping = dict(zip(df["occupation_norm"], df["rating"]))
+    return df, mapping
+
+# Load synonyms and sector keywords
+@st.cache_data
+def load_aux():
+    import yaml
+    with open("synonyms.yaml", "r", encoding="utf-8") as f:
+        syn = yaml.safe_load(f) or {}
+    with open("sector_keywords.json", "r", encoding="utf-8") as f:
+        sekt = json.load(f)
+    return syn, sekt
+
+DICT_DF, DICT_MAP = load_risk_dict()
+SYNONYMS, SECTOR_KW = load_aux()
+CANONICALS = set(DICT_MAP.keys())
+
+TIERS = [
+    (1,3,"Low / In appetite","green"),
+    (4,6,"Medium / Needs review","orange"),
+    (7,8,"High / Hard to place","red"),
+    (9,9,"Very High / Potentially placeable","red"),
+    (10,10,"Out of appetite / Decline","black"),
+]
+
+def tier_for(score:int):
+    for lo, hi, label, color in TIERS:
+        if lo <= score <= hi:
+            return label, color
+    return "Unknown","grey"
+
+def sanitize_url(u):
+    if not u:
+        return None
+    if not u.startswith("http"):
+        u = "https://" + u
+    return u
+
+def same_domain(u, base):
+    try:
+        return urlparse(u).netloc == urlparse(base).netloc
+    except:
+        return False
+
+def fetch(url, timeout=12):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; RiskAnalyzer/1.0)"}
+        r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+        if r.status_code == 200 and r.content:
+            return r.text
+    except Exception as e:
+        return None
+    return None
+
+def extract_links_and_text(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text(separator=" ")
+    text = re.sub(r"\s+", " ", text)
+    # Candidate internal links
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = urljoin(base_url, a["href"])
+        if same_domain(href, base_url):
+            links.append(href)
+    # Prioritize likely pages
+    wanted = ["about", "service", "services", "what-we-do", "industr", "product", "sectors", "our-work"]
+    priority = [l for l in links if any(w in l.lower() for w in wanted)]
+    # unique preserve order
+    seen = set()
+    ordered = []
+    for l in priority + links:
+        if l not in seen:
+            seen.add(l); ordered.append(l)
+    return ordered[:12], text
+
+def normalize_phrase(s):
+    return s.strip().lower()
+
+def detect_candidates(all_text):
+    # Exact matches from canonical dict
+    found = {}
+    text_norm = all_text.lower()
+    for name_norm, rating in DICT_MAP.items():
+        # strict phrase match boundaries (allow hyphen/space variants)
+        pattern = r'\b' + re.escape(name_norm) + r'\b'
+        if re.search(pattern, text_norm):
+            found[name_norm] = {"name": name_norm, "rating": int(rating), "source": "exact"}
+    # Synonym expansion
+    for syn, canonical in (SYNONYMS or {}).items():
+        syn_norm = normalize_phrase(syn)
+        can_norm = normalize_phrase(canonical)
+        if syn_norm in text_norm and can_norm in CANONICALS:
+            found[can_norm] = {"name": can_norm, "rating": int(DICT_MAP[can_norm]), "source": "synonym:"+syn}
+    # Fuzzy (guarded): only if high similarity and appears near "our services"/"we provide"
+    # We'll scan common service phrases windows
+    windows = re.findall(r"(?:our services|we (?:provide|offer)|services include).{0,200}", text_norm)
+    candidates = set()
+    for w in windows:
+        match, score, _ = process.extractOne(w, list(CANONICALS), scorer=fuzz.partial_ratio)
+        if score >= 92:
+            candidates.add(match)
+    for c in candidates:
+        found[c] = {"name": c, "rating": int(DICT_MAP[c]), "source": "fuzzy-guarded"}
+    return found
+
+def prominence_rank(text, candidates):
+    """Rank candidates by prominence: title/H1 (x5), headings (x3), frequency (x1)."""
+    weights = {}
+    # naive heading detection via markup keywords; we don't have original markup here, but keep heuristic
+    t = text.lower()
+    # Title weight
+    title_matches = []
+    # headings approximated by capitalized words preceding line breaks removed in our text; we fallback to frequency
+    for c in candidates:
+        c_norm = c
+        freq = t.count(c_norm)
+        w = freq
+        if re.search(r"\b" + re.escape(c_norm) + r"\b", t[:400]):  # early text/hero/title
+            w += 5
+        if re.search(r"(services|what we do).{0,120}" + re.escape(c_norm), t):
+            w += 3
+        weights[c] = w
+    ranked = sorted(candidates, key=lambda x: (-weights.get(x,0), -candidates[x]["rating"]))  # tie-break by higher risk
+    return ranked, weights
+
+def evidence_snippets(text, term, max_snips=3):
+    tn = term.lower()
+    spans = []
+    for m in re.finditer(re.escape(tn), text.lower()):
+        start = max(0, m.start()-120)
+        end = min(len(text), m.end()+120)
+        spans.append(text[start:end])
+        if len(spans) >= max_snips:
+            break
+    return ["…"+s.strip()+"…" for s in spans]
+
+def choose_sector(text):
+    t = text.lower()
+    best = None; best_score = 0
+    for sector, kws in (SECTOR_KW or {}).items():
+        score = 0
+        for kw in kws:
+            score += t.count(kw.lower())
+        if score > best_score:
+            best_score = score; best = sector
+    # Fallback to Services if tie
+    return best or "Services"
+
+def analyze(url):
+    url = sanitize_url(url)
+    if not url:
+        return {"error":"Invalid URL"}
+    html = fetch(url)
+    if not html:
+        return {"error":"Could not fetch URL. If site is JS-heavy, deploy with a JS-rendering crawler."}
+    links, text = extract_links_and_text(html, url)
+
+    # include some secondary pages
+    collected_texts = [text]
+    for link in links[:6]:
+        html2 = fetch(link)
+        if html2:
+            _, t2 = extract_links_and_text(html2, link)
+            collected_texts.append(t2)
+
+    all_text = " ".join(collected_texts)
+    found = detect_candidates(all_text)
+    if not found:
+        return {"url": url, "business_name": urlparse(url).netloc, "score": None, "tier": None,
+                "sector": choose_sector(all_text),
+                "core": None, "flags": [], "notes": "No qualifying occupations detected from on-site evidence.",
+                "evidence": []}
+
+    ranked, weights = prominence_rank(all_text, found)
+    core_key = ranked[0]
+    core = found[core_key]
+    score = int(core["rating"])
+    tier_label, tier_color = tier_for(score)
+
+    # Additional flags: other items with rating >=7
+    flags = []
+    for k, v in found.items():
+        if k == core_key:
+            continue
+        if int(v["rating"]) >= 7:
+            flags.append({"occupation": k, "rating": int(v["rating"])})
+    # Evidence
+    ev = evidence_snippets(all_text, core_key, 3)
+
+    # Business name heuristic: title tag or H1 approximation
+    name_guess = urlparse(url).netloc
+    m = re.search(r"([A-Z][A-Za-z0-9&' ]{2,60})(?:\s[-|•|–])", collected_texts[0])
+    if m:
+        name_guess = m.group(1).strip()
+
+    # Notes
+    notes = f"Core activity selected by prominence weighting and on-site phrasing. Matched '{core_key}' via {core.get('source')} with rating {score} from Document10. 9 = 'Very High / Potentially placeable' is treated as such; no averaging applied. {('Additional high-risk flags present.' if flags else 'No additional high-risk flags detected.')}"
+
+    result = {
+        "url": url,
+        "business_name": name_guess,
+        "score": score,
+        "tier": tier_label,
+        "sector": choose_sector(all_text),
+        "core": {"occupation": core_key, "rating": score, "source": core.get("source")},
+        "flags": flags,
+        "notes": notes,
+        "evidence": ev,
+    }
+    return result
+
+st.title("Insurance Risk Analyzer")
+st.caption("URL → One core occupation → Document10 risk score (1–10) with evidence. No averaging.")
+
+qs = st.experimental_get_query_params()
+prefill = (qs.get("url") or [""])[0]
+
+url = st.text_input("Website URL", value=prefill, placeholder="https://example.com")
+run = st.button("Analyze Risk Level")
+
+if run and url:
+    with st.spinner("Analyzing..."):
+        res = analyze(url)
+    if "error" in res:
+        st.error(res["error"])
+    else:
+        # Output card
+        col1, col2 = st.columns([3,1])
+        with col1:
+            st.subheader(res["business_name"] or url)
+            st.write(res["url"])
+        with col2:
+            if res["score"] is not None:
+                tier_lbl, color = tier_for(res["score"])
+                st.metric(label="Risk Score (1–10)", value=res["score"])
+                st.markdown(f"**Tier:** {tier_lbl}")
+        st.divider()
+        st.markdown("**Business Sector (chosen)**")
+        st.write(res["sector"])
+        st.markdown("**Detected Occupation/Industry (core)**")
+        st.write(f"{res['core']['occupation']} — rating {res['core']['rating']}")
+        if res["flags"]:
+            st.markdown("**Additional High-Risk Flags (≥7, advisory only)**")
+            for f in res["flags"]:
+                st.write(f"- {f['occupation']} — {f['rating']}")
+        st.markdown("**Reasoning/Notes**")
+        st.write(res["notes"])
+        st.markdown("**Evidence Snippets**")
+        for s in res["evidence"]:
+            st.code(s)
+
+        # Export
+        export = {
+            "Business Name": res["business_name"],
+            "Website URL": res["url"],
+            "Risk Score": res["score"],
+            "Risk Tier": res["tier"],
+            "Business Sector": res["sector"],
+            "Detected Occupation/Industry (core)": res["core"]["occupation"],
+            "Additional Flags": "; ".join([f"{f['occupation']}({f['rating']})" for f in res["flags"]]) if res["flags"] else "",
+            "Reasoning/Notes": res["notes"],
+            "Evidence": " | ".join(res["evidence"]),
+        }
+        df = pd.DataFrame([export])
+        st.download_button("Download CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="assessment.csv", mime="text/csv")
+
+        # Shareable link
+        base = os.getenv("PUBLIC_BASE_URL", "")  # if deployed, set this; otherwise fallback to query param link
+        if base:
+            share_url = f"{base}?url={requests.utils.quote(res['url'])}"
+        else:
+            # local/share via query param — user copies current app URL and append ?url=
+            share_url = f"?url={res['url']}"
+        st.text_input("Shareable link (paste into browser)", value=share_url)
+else:
+    st.info("Enter a website URL and click Analyze. You can also append '?url=https://example.com' to the app URL to share a direct assessment link.")
+
+st.markdown("---")
+st.caption("Scoring dictionary loaded from Document10 (uploaded). Edit 'synonyms.yaml' and 'sector_keywords.json' to tune matching and sector choice.")
