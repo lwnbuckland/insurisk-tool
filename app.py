@@ -242,12 +242,74 @@ def analyze(url):
             collected_texts.append(t2)
 
     all_text = " ".join(collected_texts)
+    # Detect potential occupations in the aggregated text.
     found = detect_candidates(all_text)
+    # If no occupation is detected, fall back to a sector-based risk rating.
     if not found:
-        return {"url": url, "business_name": urlparse(url).netloc, "score": None, "tier": None,
-                "sector": choose_sector(all_text),
-                "core": None, "flags": [], "notes": "No qualifying occupations detected from on-site evidence.",
-                "evidence": []}
+            # When no specific occupations are detected from the page text, fall back to a
+            # sector-based risk score. We map the chosen sector to a default risk score
+            # representative of the typical risk exposure for that industry. This ensures
+            # that every business receives a numeric score even without an exact
+            # occupation match.
+            sector = choose_sector(all_text)
+            # Define a default risk score for each sector. Higher numbers indicate
+            # greater inherent risk. These values can be tuned as more data becomes
+            # available.
+            sector_risk = {
+                "Construction": 7,
+                "Electrical and electronic equipment": 5,
+                "Wholesale": 4,
+                "Retail": 3,
+                "Manufacturing": 5,
+                "Hospitality": 4,
+                "Leisure and recreation": 3,
+                "Farming": 5,
+                "Professional services": 2,
+                "Distribution": 5,
+                "Waste and sewage services": 7,
+                "Public authorities and defense": 4,
+                "Utilities – energy, water, and telecoms": 7,
+                "Metalworking, engineering, and machinery": 6,
+                "Motor trade": 6,
+                "Woodworking": 5,
+                "Food and drink": 4,
+                "Services": 3,
+                "Railways, roads, waterways, marine, and aviation services": 7,
+                "Printing and paper": 4,
+                "Chemicals, oils, and gas": 8,
+                "Mining and quarrying": 8,
+                "Plastics and rubber": 5,
+                "Ceramics and glass": 5,
+                "Clothing, footwear, textiles, and soft furnishings": 4,
+                "Education": 3,
+                "Health, hospitals, and care": 4,
+                "Property owners": 3,
+                "Estates": 3,
+                "Consumer and business services": 3,
+            }
+            # Use the sector-based score if available; otherwise default to a low risk of 3.
+            fallback_score = sector_risk.get(sector, 3)
+            tier_label, _ = tier_for(fallback_score)
+            # Try to guess a business name using the same heuristic as when a core
+            # occupation is found. This attempts to extract a capitalised phrase from
+            # the page's text, using the first collected text (typically the home page).
+            name_guess = urlparse(url).netloc
+            m = re.search(r"([A-Z][A-Za-z0-9&' ]{2,60})(?:\s[-|•|–])", collected_texts[0])
+            if m:
+                name_guess = m.group(1).strip()
+            notes = ("No qualifying occupations detected; assigned risk score based on the "
+                     f"business sector '{sector}' using fallback mapping.")
+            return {
+                "url": url,
+                "business_name": name_guess,
+                "score": fallback_score,
+                "tier": tier_label,
+                "sector": sector,
+                "core": None,
+                "flags": [],
+                "notes": notes,
+                "evidence": []
+            }
 
     ranked, weights = prominence_rank(all_text, found)
     core_key = ranked[0]

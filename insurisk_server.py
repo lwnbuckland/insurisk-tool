@@ -344,17 +344,64 @@ def analyze_url(url: str, mapping: dict, synonyms: dict, sector_kws: dict):
     found = detect_candidates(all_text, mapping, synonyms, canonicals)
     # Build result structure when nothing was found
     if not found:
-        return {
-            "url": url,
-            "business_name": urlparse(url).netloc,
-            "score": None,
-            "tier": None,
-            "sector": choose_sector(all_text, sector_kws),
-            "core": None,
-            "flags": [],
-            "notes": "No qualifying occupations detected from on-site evidence.",
-            "evidence": [],
-        }
+            # Derive a risk score based on the sector when no specific occupations
+            # are detected. This fallback ensures that every business receives a
+            # numeric rating by associating typical risk levels with each sector.
+            sector = choose_sector(all_text, sector_kws)
+            sector_risk = {
+                "Construction": 7,
+                "Electrical and electronic equipment": 5,
+                "Wholesale": 4,
+                "Retail": 3,
+                "Manufacturing": 5,
+                "Hospitality": 4,
+                "Leisure and recreation": 3,
+                "Farming": 5,
+                "Professional services": 2,
+                "Distribution": 5,
+                "Waste and sewage services": 7,
+                "Public authorities and defense": 4,
+                "Utilities – energy, water, and telecoms": 7,
+                "Metalworking, engineering, and machinery": 6,
+                "Motor trade": 6,
+                "Woodworking": 5,
+                "Food and drink": 4,
+                "Services": 3,
+                "Railways, roads, waterways, marine, and aviation services": 7,
+                "Printing and paper": 4,
+                "Chemicals, oils, and gas": 8,
+                "Mining and quarrying": 8,
+                "Plastics and rubber": 5,
+                "Ceramics and glass": 5,
+                "Clothing, footwear, textiles, and soft furnishings": 4,
+                "Education": 3,
+                "Health, hospitals, and care": 4,
+                "Property owners": 3,
+                "Estates": 3,
+                "Consumer and business services": 3,
+            }
+            fallback_score = sector_risk.get(sector, 3)
+            tier_label, _ = tier_for(fallback_score)
+            # Guess business name from capitalised words
+            name_guess = urlparse(url).netloc
+            m = re.search(r"([A-Z][A-Za-z0-9&' ]{2,60})(?:\s[-|•|–])", collected_texts[0])
+            if m:
+                name_guess = m.group(1).strip()
+            notes = (
+                "No qualifying occupations detected; assigned risk score based on the "
+                f"business sector '{sector}' using fallback mapping."
+            )
+            return {
+                "url": url,
+                "business_name": name_guess,
+                "score": fallback_score,
+                "tier": tier_label,
+                "sector": sector,
+                "core": None,
+                "flags": [],
+                "notes": notes,
+                "evidence": [],
+            }
     ranked, weights = prominence_rank(all_text, found)
     core_key = ranked[0]
     core = found[core_key]
